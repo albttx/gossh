@@ -19,3 +19,5 @@ if err != nil {
     os.Exit(1)
 }
 ```
+
+[![asciicast](https://asciinema.org/a/E1MswnMqQcVakjy3qU6RD4nuk.png)](https://asciinema.org/a/E1MswnMqQcVakjy3qU6RD4nuk)
