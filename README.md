@@ -1,6 +1,6 @@
 # GOSSH
 
-This package is simply running a ssh connection
+This package simply prompt a ssh connection.
 
 ## Feature
 
