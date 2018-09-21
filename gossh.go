@@ -7,13 +7,22 @@ import (
 
 	"github.com/albttx/gossh/term"
 	"golang.org/x/crypto/ssh"
+	"golang.org/x/crypto/ssh/agent"
 )
 
 // Prompt start a ssh connection in your terminal
+// pass can empty when ssh keys
 func Prompt(user, pass, host, port string) error {
+	sshAgent, err := net.Dial("unix", os.Getenv("SSH_AUTH_SOCK"))
+	if err != nil {
+		return err
+	}
+	sshKeys := ssh.PublicKeysCallback(agent.NewClient(sshAgent).Signers)
+
 	conn, err := ssh.Dial("tcp", net.JoinHostPort(host, port), &ssh.ClientConfig{
 		User: user,
 		Auth: []ssh.AuthMethod{
+			sshKeys,
 			ssh.Password(pass),
 		},
 		HostKeyCallback: ssh.InsecureIgnoreHostKey(),
@@ -51,6 +60,7 @@ func Prompt(user, pass, host, port string) error {
 	} else {
 		return fmt.Errorf("Error: File Descriptor isn't a terminal")
 	}
+
 	if err := session.RequestPty("xterm", int(winsize.Height), int(winsize.Width), modes); err != nil {
 		return err
 	}
