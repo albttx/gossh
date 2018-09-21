@@ -5,9 +5,9 @@ import (
 	"net"
 	"os"
 
-	"github.com/albttx/gossh/term"
 	"golang.org/x/crypto/ssh"
 	"golang.org/x/crypto/ssh/agent"
+	"golang.org/x/crypto/ssh/terminal"
 )
 
 // Prompt start a ssh connection in your terminal
@@ -17,8 +17,8 @@ func Prompt(user, pass, host, port string) error {
 	if err != nil {
 		return err
 	}
-	fd, oldState, err := handleKeys(session)
-	defer term.RestoreTerminal(fd, oldState)
+	fd, state, err := handleKeys(session)
+	defer terminal.Restore(fd, state)
 
 	if err := session.Shell(); err != nil {
 		return err
@@ -36,8 +36,8 @@ func Exec(user, pass, host, port, command string) error {
 	if err != nil {
 		return err
 	}
-	fd, oldState, err := handleKeys(session)
-	defer term.RestoreTerminal(fd, oldState)
+	fd, state, err := handleKeys(session)
+	defer terminal.Restore(fd, state)
 
 	if err := session.Run(command); err != nil {
 		return err
@@ -75,33 +75,21 @@ func connect(user, pass, host, port string) (*ssh.Session, error) {
 	return session, nil
 }
 
-func handleKeys(session *ssh.Session) (uintptr, *term.State, error) {
-	var (
-		oldState = &term.State{}
-		err      error
-	)
-
-	fd := os.Stdin.Fd()
-	if term.IsTerminal(fd) {
-		oldState, err = term.MakeRaw(fd)
-		if err != nil {
-			return 0, oldState, err
-		}
-	} else {
-		return 0, nil, fmt.Errorf("Error: File Descriptor isn't a terminal")
+func handleKeys(session *ssh.Session) (int, *terminal.State, error) {
+	fd := int(os.Stdin.Fd())
+	state, err := terminal.MakeRaw(fd)
+	if err != nil {
+		return 0, state, err
 	}
 
-	winsize, err := term.GetWinsize(fd)
-	if err != nil || winsize == nil {
-		winsize = &term.Winsize{
-			Width: 80, Height: 24,
-		}
+	termWidth, termHeight, err := terminal.GetSize(fd)
+	if err != nil {
+		termWidth = 80
+		termHeight = 24
 	}
-	err = session.RequestPty("xterm", int(winsize.Height), int(winsize.Width), ssh.TerminalModes{
+
+	err = session.RequestPty("xterm", termHeight, termWidth, ssh.TerminalModes{
 		ssh.ECHO: 1,
 	})
-	if err != nil {
-		return 0, oldState, err
-	}
-	return fd, oldState, nil
+	return fd, state, err
 }
