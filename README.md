@@ -18,6 +18,12 @@ if err != nil {
     fmt.Println(err)
     os.Exit(1)
 }
+
+err := gossh.Exec("user", "pass", "host", "port", "ls -la")
+if err != nil {
+    fmt.Println(err)
+    os.Exit(1)
+}
 ```
 
 [![asciicast](https://asciinema.org/a/E1MswnMqQcVakjy3qU6RD4nuk.png)](https://asciinema.org/a/E1MswnMqQcVakjy3qU6RD4nuk)

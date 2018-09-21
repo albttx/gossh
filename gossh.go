@@ -11,11 +11,44 @@ import (
 )
 
 // Prompt start a ssh connection in your terminal
-// pass can empty when ssh keys
+// pass can empty when ssh keys are in the ssh-agent
 func Prompt(user, pass, host, port string) error {
-	sshAgent, err := net.Dial("unix", os.Getenv("SSH_AUTH_SOCK"))
+	session, err := connect(user, pass, host, port)
 	if err != nil {
 		return err
+	}
+	fd, oldState, err := handleKeys(session)
+	defer term.RestoreTerminal(fd, oldState)
+
+	if err := session.Shell(); err != nil {
+		return err
+	}
+	if err := session.Wait(); err != nil {
+		return err
+	}
+	return nil
+}
+
+// Exec run a command over the ssh connection
+// pass can empty when ssh keys are in the ssh-agent
+func Exec(user, pass, host, port, command string) error {
+	session, err := connect(user, pass, host, port)
+	if err != nil {
+		return err
+	}
+	fd, oldState, err := handleKeys(session)
+	defer term.RestoreTerminal(fd, oldState)
+
+	if err := session.Run(command); err != nil {
+		return err
+	}
+	return nil
+}
+
+func connect(user, pass, host, port string) (*ssh.Session, error) {
+	sshAgent, err := net.Dial("unix", os.Getenv("SSH_AUTH_SOCK"))
+	if err != nil {
+		return nil, err
 	}
 	sshKeys := ssh.PublicKeysCallback(agent.NewClient(sshAgent).Signers)
 
@@ -28,48 +61,47 @@ func Prompt(user, pass, host, port string) error {
 		HostKeyCallback: ssh.InsecureIgnoreHostKey(),
 	})
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	session, err := conn.NewSession()
 	if err != nil {
-		return fmt.Errorf("Failed to create session: %s", err)
+		return nil, fmt.Errorf("Failed to create session: %s", err)
 	}
-
 	session.Stdout = os.Stdout
 	session.Stderr = os.Stderr
 	session.Stdin = os.Stdin
 
-	modes := ssh.TerminalModes{
-		ssh.ECHO: 1,
-	}
+	return session, nil
+}
+
+func handleKeys(session *ssh.Session) (uintptr, *term.State, error) {
+	var (
+		oldState = &term.State{}
+		err      error
+	)
+
 	fd := os.Stdin.Fd()
-	winsize := &term.Winsize{}
 	if term.IsTerminal(fd) {
-		oldState, err := term.MakeRaw(fd)
+		oldState, err = term.MakeRaw(fd)
 		if err != nil {
-			return err
-		}
-		defer term.RestoreTerminal(fd, oldState)
-		winsize, err = term.GetWinsize(fd)
-		if err != nil || winsize == nil {
-			winsize = &term.Winsize{
-				Width: 80, Height: 24,
-			}
+			return 0, oldState, err
 		}
 	} else {
-		return fmt.Errorf("Error: File Descriptor isn't a terminal")
+		return 0, nil, fmt.Errorf("Error: File Descriptor isn't a terminal")
 	}
 
-	if err := session.RequestPty("xterm", int(winsize.Height), int(winsize.Width), modes); err != nil {
-		return err
+	winsize, err := term.GetWinsize(fd)
+	if err != nil || winsize == nil {
+		winsize = &term.Winsize{
+			Width: 80, Height: 24,
+		}
 	}
-
-	if err := session.Shell(); err != nil {
-		return err
+	err = session.RequestPty("xterm", int(winsize.Height), int(winsize.Width), ssh.TerminalModes{
+		ssh.ECHO: 1,
+	})
+	if err != nil {
+		return 0, oldState, err
 	}
-	if err := session.Wait(); err != nil {
-		return err
-	}
-	return nil
+	return fd, oldState, nil
 }
